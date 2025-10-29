@@ -1,65 +1,89 @@
-````markdown
 # netplan-cli
 
-A lightweight, IPv4-only CLI and interactive tool for configuring static network interfaces on Ubuntu Server using **Netplan**.
+A minimal, IPv4-only CLI and interactive utility for configuring static network interfaces on **Ubuntu Server** using **Netplan**.
+
+This repository contains a single Bash script:
+
+- **netplan.sh** – Provides both interactive and non-interactive modes to generate and apply Netplan YAML configurations with input validation and automatic backups.
 
 ---
 
-## Overview
+## Description
 
-`netplan-cli` provides a reliable and scriptable way to configure static IP addressing without manually editing YAML files under `/etc/netplan/`.  
-It supports both interactive and automated (non-interactive) execution, performing full input validation and automatic YAML generation.
-
----
-
-## Key Features
-
-- IPv4-only configuration (CIDR notation, e.g. `192.168.100.10/24`)
-- Gateway validation (must belong to the same subnet as the interface)
-- DNS address validation (IPv4 format)
-- Automatic interface detection, including VLANs and bonded interfaces
-- Automatic backup of existing Netplan YAML files
-- Non-interactive CLI parameters for automation and scripting
-- `--dry-run` mode for YAML generation without changes
-- `--validate-only` mode for syntax validation using `netplan generate`
-- Pure Bash implementation — requires only `bash`, `iproute2`, and `netplan.io`
+- **netplan.sh**:
+  - Configures static IPv4 addresses using CIDR notation (e.g. `192.168.100.10/24`).
+  - Validates gateway and DNS addresses.
+  - Automatically detects available interfaces, including VLANs and bonded interfaces.
+  - Creates a backup of any existing Netplan YAML file before writing.
+  - Supports both interactive and automated (non-interactive) execution.
+  - Provides `--dry-run` and `--validate-only` modes for safe testing.
 
 ---
 
-## Installation
+## Features
 
-```bash
-git clone https://github.com/<your-username>/netplan-cli.git
-cd netplan-cli
-chmod +x netplan.sh
-````
+- IPv4-only configuration with CIDR notation  
+- Gateway validation (must be in same subnet)  
+- DNS address validation (IPv4 format)  
+- Automatic interface detection (physical, VLAN, bond, tunnel)  
+- Interactive guided mode  
+- Non-interactive CLI mode for automation  
+- `--dry-run` mode for YAML preview  
+- `--validate-only` mode using `netplan generate`  
+- Automatic YAML backup before modification  
+- Pure Bash — no external dependencies beyond core system tools  
+
+---
+
+## Requirements
+
+- Ubuntu Server 18.04 or newer  
+- `bash`, `iproute2`, and `netplan.io` installed  
+- Root privileges (`sudo`)  
+
+---
+
+## Setup
+
+1. Clone this repository:
+
+   ```bash
+   git clone https://github.com/<your-username>/netplan-cli.git
+   cd netplan-cli
+   ```
+
+2. Make the script executable:
+
+   ```bash
+   chmod +x netplan.sh
+   ```
 
 ---
 
 ## Usage
 
-### Interactive mode
+### 1. Interactive mode
 
-Run the tool without parameters to enter guided configuration:
+Run the script without parameters to enter guided configuration:
 
 ```bash
 sudo ./netplan.sh
 ```
 
-You will be prompted to define:
+You will be prompted for:
 
-* Interface name
-* IPv4 address (CIDR notation)
-* Default gateway
-* Primary and optional secondary DNS servers
+- Interface name  
+- IPv4 address (CIDR notation)  
+- Default gateway  
+- Primary and secondary DNS servers  
 
-All input is validated before being written to `/etc/netplan/`.
+All inputs are validated before the YAML file is written to `/etc/netplan/`.
 
 ---
 
-### Non-interactive mode
+### 2. Non-interactive mode
 
-For automation or scripting, use command-line parameters:
+Use parameters for automation or scripting:
 
 ```bash
 sudo ./netplan.sh \
@@ -71,9 +95,9 @@ sudo ./netplan.sh \
 
 ---
 
-### Dry-run
+### 3. Dry-run
 
-Generates and prints the resulting YAML without writing or applying changes:
+Generates and prints the YAML file without writing or applying it:
 
 ```bash
 sudo ./netplan.sh \
@@ -86,9 +110,9 @@ sudo ./netplan.sh \
 
 ---
 
-### Validate-only
+### 4. Validate-only
 
-Validates syntax and structure with `netplan generate`, without applying the configuration:
+Validates syntax and structure using `netplan generate`, without applying the configuration:
 
 ```bash
 sudo ./netplan.sh \
@@ -101,9 +125,9 @@ sudo ./netplan.sh \
 
 ---
 
-### Display all interfaces
+### 5. Show all interfaces
 
-Show all detected network interfaces, including virtual and tunnel types:
+Displays all detected network interfaces, including virtual and tunnel types:
 
 ```bash
 sudo ./netplan.sh --show-all-ifaces
@@ -135,14 +159,6 @@ YAML saved at: /etc/netplan/50-cloud-init.yaml (backup created if file existed).
 
 ---
 
-## Requirements
+## Disclaimer
 
-* Ubuntu Server 18.04 or newer
-* `bash`, `iproute2`, and `netplan.io` installed
-* Root privileges (use `sudo`)
-
----
-
-## License
-
-Released under the MIT License.
+This is an unofficial script and is not affiliated with or supported by Canonical Ltd.
