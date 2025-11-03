@@ -52,7 +52,7 @@ This repository contains a single Bash script:
    ```bash
    git clone https://github.com/fabionfsc/netplan-cli.git
    cd netplan-cli
-````
+   ```
 
 2. Make the script executable:
 
