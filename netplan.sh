@@ -1,7 +1,11 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env -S bash -euo pipefail
 
 # ------------- CLI PARSER (IPv4 + DHCPv4) -------------
+# Notes:
+# - Keep this file with LF line endings. In Git, enforce with a .gitattributes entry like: "*.sh text eol=lf".
+# - Uses "routes: to: default" instead of legacy gateway4.
+# - If IFACE contains a dot (e.g. ens3.120), YAML will use a proper netplan "vlans:" block.
+
 IFACE=""
 IPV4_CIDR=""
 GW4=""
@@ -98,7 +102,7 @@ pick_netplan_file() {
 }
 
 list_ifaces() {
-  local cmd="ip -o link show | awk -F': ' '{print \$2}'"
+  local cmd="ip -o link show | awk -F': ' '{print $2}'"
   if (( SHOW_ALL_IFACES==0 )); then
     # filter loopback, container/tunnel, and common virtual interfaces
     bash -c "$cmd" | grep -Ev '^(lo|docker|veth|cni|flannel|wg|tailscale|vmnet|vnet|virbr|br-[0-9a-f]{12}|tun|tap|zt[a-z0-9]+)$' || true
@@ -201,6 +205,25 @@ apply_netplan() {
   netplan apply
 }
 
+# ------------- YAML HELPERS -------------
+# Build nameservers block
+build_dns_block() {
+  local -a dns=("$@")
+  [[ ${#dns[@]} -gt 0 ]] || return 0
+  printf "      nameservers:\n        addresses: [%s]\n" "$(printf "%s," "${dns[@]}" | sed 's/,$//')"
+}
+
+# Detect VLAN-style interface (return 0 if yes) and extract base/id
+is_vlan_iface() {
+  [[ "$1" == *.* ]] || return 1
+  local base="${1%%.*}" vid="${1##*.}"
+  [[ "$vid" =~ ^[0-9]+$ ]] || return 1
+  return 0
+}
+
+vlan_base() { echo "${1%%.*}"; }
+vlan_id()   { echo "${1##*.}"; }
+
 # ------------- CORE -------------
 main() {
   need_root
@@ -269,38 +292,85 @@ main() {
   fi
 
   # Build YAML
-  if (( DHCP4==1 )); then
-    local DNS_BLOCK_DHCP=""
-    if [[ ${#dns_ary[@]:-0} -gt 0 ]]; then
-      DNS_BLOCK_DHCP="      nameservers:
-        addresses: [$(printf "%s," "${dns_ary[@]}" | sed 's/,$//')]"
-    fi
-    YAML_CONTENT=$(cat <<EOF
+  local YAML_CONTENT=""
+  if is_vlan_iface "$IFACE"; then
+    # Proper netplan VLAN block
+    local base link id
+    base="$(vlan_base "$IFACE")"
+    id="$(vlan_id "$IFACE")"
+
+    if (( DHCP4==1 )); then
+      local DNS_BLOCK_DHCP=""
+      if [[ ${#dns_ary[@]:-0} -gt 0 ]]; then
+        DNS_BLOCK_DHCP="$(build_dns_block "${dns_ary[@]}")"
+      fi
+      YAML_CONTENT=$(cat <<EOF
 network:
   version: 2
   ethernets:
-    $IFACE:
+    ${base}: {}
+  vlans:
+    ${IFACE}:
+      id: ${id}
+      link: ${base}
       dhcp4: yes
-$( [[ -n "$DNS_BLOCK_DHCP" ]] && echo "$DNS_BLOCK_DHCP" )
+$( [[ -n "$DNS_BLOCK_DHCP" ]] && printf "%s\n" "$DNS_BLOCK_DHCP" )
 EOF
 )
-  else
-    local DNS_BLOCK="      nameservers:
-        addresses: [$(printf "%s," "${dns_ary[@]}" | sed 's/,$//')]"
-    local ADDR_BLOCK="      addresses:
-        - $ip4/$ip4p"
-    local GW4_LINE="      gateway4: $gw4"
-    YAML_CONTENT=$(cat <<EOF
+    else
+      local DNS_BLOCK="$(build_dns_block "${dns_ary[@]}")"
+      YAML_CONTENT=$(cat <<EOF
 network:
   version: 2
   ethernets:
-    $IFACE:
+    ${base}: {}
+  vlans:
+    ${IFACE}:
+      id: ${id}
+      link: ${base}
       dhcp4: no
-$ADDR_BLOCK
-$GW4_LINE
+      addresses:
+        - ${ip4}/${ip4p}
+      routes:
+        - to: default
+          via: ${gw4}
 $DNS_BLOCK
 EOF
 )
+    fi
+  else
+    # Plain ethernet
+    if (( DHCP4==1 )); then
+      local DNS_BLOCK_DHCP=""
+      if [[ ${#dns_ary[@]:-0} -gt 0 ]]; then
+        DNS_BLOCK_DHCP="$(build_dns_block "${dns_ary[@]}")"
+      fi
+      YAML_CONTENT=$(cat <<EOF
+network:
+  version: 2
+  ethernets:
+    ${IFACE}:
+      dhcp4: yes
+$( [[ -n "$DNS_BLOCK_DHCP" ]] && printf "%s\n" "$DNS_BLOCK_DHCP" )
+EOF
+)
+    else
+      local DNS_BLOCK="$(build_dns_block "${dns_ary[@]}")"
+      YAML_CONTENT=$(cat <<EOF
+network:
+  version: 2
+  ethernets:
+    ${IFACE}:
+      dhcp4: no
+      addresses:
+        - ${ip4}/${ip4p}
+      routes:
+        - to: default
+          via: ${gw4}
+$DNS_BLOCK
+EOF
+)
+    fi
   fi
 
   # Preview
