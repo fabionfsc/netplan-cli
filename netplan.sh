@@ -19,15 +19,15 @@
 #
 # Usage examples:
 #   Static IPv4 on plain NIC:
-#     sudo ./netplan.sh --iface ens3 --ip 10.120.80.10/27 --gw 10.120.80.1 --dns 1.1.1.1,8.8.8.8
+#     sudo ./netplan.sh --static4 --iface ens3 --ip 10.120.80.10/27 --gw 10.120.80.1 --dns 1.1.1.1,8.8.8.8
 #   Static IPv4 on VLAN:
-#     sudo ./netplan.sh --iface ens3.120 --ip 10.120.80.10/27 --gw 10.120.80.1 --dns 1.1.1.1
+#     sudo ./netplan.sh --static4 --iface ens3.120 --ip 10.120.80.10/27 --gw 10.120.80.1 --dns 1.1.1.1
 #   DHCPv4 with DNS override:
-#     sudo ./netplan.sh --iface ens3 --dhcp4 --dns 9.9.9.9,1.1.1.1
+#     sudo ./netplan.sh --dhcp4 --iface ens3 --dns 9.9.9.9,1.1.1.1
 #   Just print YAML (no write/apply):
-#     sudo ./netplan.sh --iface ens3 --dhcp4 --dry-run
+#     sudo ./netplan.sh --dhcp4 --iface ens3 --dry-run
 #   Only validate the generated file:
-#     sudo ./netplan.sh --iface ens3 --ip 192.168.0.10/24 --gw 192.168.0.1 --dns 1.1.1.1 --validate-only
+#     sudo ./netplan.sh --static4 --iface ens3 --ip 192.168.0.10/24 --gw 192.168.0.1 --dns 1.1.1.1 --validate-only
 #   List detected real interfaces (whitelist) and exit:
 #     ./netplan.sh --list-ifaces
 # -------------------------------------------------------------
@@ -41,37 +41,47 @@ NETPLAN_FILE_ARG=""
 DRY_RUN=0
 VALIDATE_ONLY=0
 DHCP4=0
+STATIC4=0
 LIST_IFACES_ONLY=0
 
 # ------------- USAGE -------------
 usage() {
   cat <<EOF
-Usage: sudo $0 [options]
+Usage: sudo $0 [MODE] [options]
 
-Required (pick one mode):
-  --dhcp4                 Enable DHCPv4 on the interface
-  --ip CIDR               IPv4 CIDR (e.g. 192.168.10.5/24) [requires --gw and --dns]
+Modes (pick exactly one):
+  --dhcp4                  Enable DHCPv4 on the interface
+  --static4                Enable static IPv4 mode (requires --ip, --gw, --dns)
 
-Required general:
-  --iface IFACE           Interface name (e.g. ens3, enp0s3, bond0, ens3.120)
+Required:
+  --iface IFACE            Interface name (e.g. ens3, enp0s3, bond0, ens3.120)
 
-Optional:
-  --gw IPV4               Default IPv4 gateway (static mode only)
-  --dns LIST              DNS IPv4 comma-separated (e.g. 1.1.1.1,8.8.8.8)
-  --file PATH             Netplan YAML to write (default: auto-detect or /etc/netplan/01-netcfg.yaml)
-  --dry-run               Print YAML to stdout only; do not write/apply
-  --validate-only         Generate and validate netplan without applying
-  --list-ifaces           Print detected real interfaces and exit
-  -h, --help              This help
+Static IPv4 options:
+  --ip CIDR                IPv4/prefix (e.g. 192.168.10.5/24)
+  --gw IPV4                Default IPv4 gateway
+  --dns LIST               DNS IPv4 comma-separated (e.g. 1.1.1.1,8.8.8.8)
+
+General options:
+  --file PATH              Netplan YAML to write (default: auto-detect or /etc/netplan/01-netcfg.yaml)
+  --dry-run                Print YAML to stdout only; do not write/apply
+  --validate-only          Generate and validate netplan without applying
+  --list-ifaces            Print detected real interfaces and exit
+  -h, --help               This help
 
 Notes:
-  - --dhcp4 is mutually exclusive with --ip/--gw
-  - Static mode requires: --ip, --gw, and --dns
+  - --dhcp4 and --static4 are mutually exclusive.
+  - In static mode, all of --ip, --gw, and --dns are required.
 EOF
 }
 
 # Print help if no args at all
 [[ $# -eq 0 ]] && { usage; exit 1; }
+
+# Support positional mode for ergonomics: `dhcp4` or `static4` as first arg
+case "${1:-}" in
+  dhcp4) DHCP4=1; shift ;;
+  static4) STATIC4=1; shift ;;
+esac
 
 # ------------- ARG PARSER -------------
 while [[ $# -gt 0 ]]; do
@@ -81,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     --gw) GW4="$2"; shift 2;;
     --dns) DNS4="$2"; shift 2;;
     --dhcp4) DHCP4=1; shift;;
+    --static4) STATIC4=1; shift;;
     --file) NETPLAN_FILE_ARG="$2"; shift 2;;
     --dry-run) DRY_RUN=1; shift;;
     --validate-only) VALIDATE_ONLY=1; shift;;
@@ -190,6 +201,12 @@ main() {
   fi
 
   # Validate mode and required args
+  if (( DHCP4==1 && STATIC4==1 )); then
+    echo "Choose exactly one mode: --dhcp4 OR --static4." >&2; usage; exit 1
+  fi
+  if (( DHCP4==0 && STATIC4==0 )); then
+    echo "Missing mode. Use --dhcp4 or --static4." >&2; usage; exit 1
+  fi
   if [[ -z "$IFACE" ]]; then
     echo "Missing --iface." >&2; usage; exit 1
   fi
@@ -197,7 +214,7 @@ main() {
   if (( DHCP4==1 )); then
     # DHCP mode
     if [[ -n "$IPV4_CIDR$GW4" ]]; then
-      echo "Options conflict: --dhcp4 is mutually exclusive with --ip/--gw." >&2
+      echo "Options conflict: --dhcp4 cannot be used with --ip/--gw." >&2
       exit 1
     fi
     local -a dns_ary=()
@@ -366,9 +383,6 @@ EOF
   else
     ip -4 -brief address show dev "$iface"
   fi
-  echo
-  echo "Route to 1.1.1.1:"
-  ip route get 1.1.1.1 || true
   echo
   echo "Done: interface $iface configured. YAML saved at: $NETPLAN_FILE"
 }
