@@ -50,7 +50,7 @@ This repository contains a single Bash script:
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/<your-username>/netplan-cli.git
+   git clone https://github.com/fabionfsc/netplan-cli.git
    cd netplan-cli
    ```
 
