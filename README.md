@@ -1,22 +1,23 @@
 # netplan-cli
 
-A minimal, IPv4-only CLI and interactive utility for configuring network interfaces on **Ubuntu Server** using **Netplan**.
+A minimal, IPv4-only CLI utility for configuring network interfaces on **Ubuntu Server** using **Netplan**.
 
 This repository contains a single Bash script:
 
-- **netplan.sh** – Provides both interactive and non-interactive modes to generate and apply Netplan YAML configurations with input validation and automatic backups.
+- **netplan.sh** – Generates and applies Netplan YAML configurations with input validation and automatic backups.
 
 ---
 
 ## Description
 
 - **netplan.sh**:
-  - Configures static IPv4 addresses using CIDR notation (e.g. `192.168.100.10/24`).
-  - **Supports enabling DHCPv4 mode (`--dhcp4`) with optional DNS override**
+  - Configures static IPv4 addresses using CIDR notation (e.g. `192.168.100.10/24`)
+  - **Supports DHCPv4 mode (`--dhcp4`) with optional DNS override**
+  - **Supports static mode via `--static4`**
   - Validates gateway and DNS addresses.
   - Automatically detects available interfaces, including VLANs and bonded interfaces.
   - Creates a backup of any existing Netplan YAML file before writing.
-  - Supports both interactive and automated (non-interactive) execution.
+  - Non-interactive CLI execution only (no interactive prompts).
   - Provides `--dry-run` and `--validate-only` modes for safe testing.
 
 ---
@@ -24,11 +25,10 @@ This repository contains a single Bash script:
 ## Features
 
 - IPv4-only configuration with CIDR notation  
-- **Static or DHCPv4 mode**
+- **Static (`--static4`) or DHCPv4 mode (`--dhcp4`)**
 - Gateway validation (must be in same subnet)  
 - DNS address validation (IPv4 format)  
-- Automatic interface detection (physical, VLAN, bond, tunnel)  
-- Interactive guided mode (static only)  
+- Automatic interface detection (physical, VLAN, bond, tunnel, wireless)  
 - Non-interactive CLI mode for automation  
 - `--dry-run` mode for YAML preview  
 - `--validate-only` mode using `netplan generate`  
@@ -52,7 +52,7 @@ This repository contains a single Bash script:
    ```bash
    git clone https://github.com/fabionfsc/netplan-cli.git
    cd netplan-cli
-   ```
+````
 
 2. Make the script executable:
 
@@ -64,20 +64,11 @@ This repository contains a single Bash script:
 
 ## Usage
 
-### 1. Interactive mode (static only)
+### 1. List interfaces
 
 ```bash
-sudo ./netplan.sh
+./netplan.sh --list-ifaces
 ```
-
-Prompts for:
-
-- Interface name  
-- IPv4 address (CIDR notation)  
-- Default gateway  
-- Primary and secondary DNS servers  
-
-All inputs are validated before the YAML file is written to `/etc/netplan/`.
 
 ---
 
@@ -85,6 +76,7 @@ All inputs are validated before the YAML file is written to `/etc/netplan/`.
 
 ```bash
 sudo ./netplan.sh \
+  --static4 \
   --iface ens3 \
   --ip 192.168.100.10/24 \
   --gw 192.168.100.1 \
@@ -93,47 +85,53 @@ sudo ./netplan.sh \
 
 ---
 
-### 3. DHCPv4 mode
+### 3. Static IPv4 on VLAN
+
+```bash
+sudo ./netplan.sh \
+  --static4 \
+  --iface ens3.120 \
+  --ip 10.120.80.10/27 \
+  --gw 10.120.80.1 \
+  --dns 1.1.1.1
+```
+
+---
+
+### 4. DHCPv4 mode
 
 Enable DHCP:
 
 ```bash
-sudo ./netplan.sh --iface ens3 --dhcp4
+sudo ./netplan.sh --dhcp4 --iface ens3
 ```
 
 DHCP with DNS override:
 
 ```bash
-sudo ./netplan.sh --iface ens3 --dhcp4 --dns 1.1.1.1,8.8.8.8
+sudo ./netplan.sh --dhcp4 --iface ens3 --dns 1.1.1.1,8.8.8.8
 ```
 
 ---
 
-### 4. Dry-run
+### 5. Dry-run
 
 ```bash
-sudo ./netplan.sh --iface ens3 --dhcp4 --dry-run
+sudo ./netplan.sh --dhcp4 --iface ens3 --dry-run
 ```
 
 ---
 
-### 5. Validate-only
+### 6. Validate-only
 
 ```bash
 sudo ./netplan.sh \
+  --static4 \
   --iface ens3 \
   --ip 192.168.100.10/24 \
   --gw 192.168.100.1 \
   --dns 1.1.1.1 \
   --validate-only
-```
-
----
-
-### 6. Show all interfaces
-
-```bash
-sudo ./netplan.sh --show-all-ifaces
 ```
 
 ---
