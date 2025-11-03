@@ -1,6 +1,6 @@
 # netplan-cli
 
-A minimal, IPv4-only CLI and interactive utility for configuring static network interfaces on **Ubuntu Server** using **Netplan**.
+A minimal, IPv4-only CLI and interactive utility for configuring network interfaces on **Ubuntu Server** using **Netplan**.
 
 This repository contains a single Bash script:
 
@@ -12,6 +12,7 @@ This repository contains a single Bash script:
 
 - **netplan.sh**:
   - Configures static IPv4 addresses using CIDR notation (e.g. `192.168.100.10/24`).
+  - **Supports enabling DHCPv4 mode (`--dhcp4`) with optional DNS override**
   - Validates gateway and DNS addresses.
   - Automatically detects available interfaces, including VLANs and bonded interfaces.
   - Creates a backup of any existing Netplan YAML file before writing.
@@ -23,10 +24,11 @@ This repository contains a single Bash script:
 ## Features
 
 - IPv4-only configuration with CIDR notation  
+- **Static or DHCPv4 mode**
 - Gateway validation (must be in same subnet)  
 - DNS address validation (IPv4 format)  
 - Automatic interface detection (physical, VLAN, bond, tunnel)  
-- Interactive guided mode  
+- Interactive guided mode (static only)  
 - Non-interactive CLI mode for automation  
 - `--dry-run` mode for YAML preview  
 - `--validate-only` mode using `netplan generate`  
@@ -62,15 +64,13 @@ This repository contains a single Bash script:
 
 ## Usage
 
-### 1. Interactive mode
-
-Run the script without parameters to enter guided configuration:
+### 1. Interactive mode (static only)
 
 ```bash
 sudo ./netplan.sh
 ```
 
-You will be prompted for:
+Prompts for:
 
 - Interface name  
 - IPv4 address (CIDR notation)  
@@ -81,9 +81,7 @@ All inputs are validated before the YAML file is written to `/etc/netplan/`.
 
 ---
 
-### 2. Non-interactive mode
-
-Use parameters for automation or scripting:
+### 2. Static IPv4 (non-interactive)
 
 ```bash
 sudo ./netplan.sh \
@@ -95,24 +93,31 @@ sudo ./netplan.sh \
 
 ---
 
-### 3. Dry-run
+### 3. DHCPv4 mode
 
-Generates and prints the YAML file without writing or applying it:
+Enable DHCP:
 
 ```bash
-sudo ./netplan.sh \
-  --iface ens3 \
-  --ip 192.168.100.10/24 \
-  --gw 192.168.100.1 \
-  --dns 1.1.1.1 \
-  --dry-run
+sudo ./netplan.sh --iface ens3 --dhcp4
+```
+
+DHCP with DNS override:
+
+```bash
+sudo ./netplan.sh --iface ens3 --dhcp4 --dns 1.1.1.1,8.8.8.8
 ```
 
 ---
 
-### 4. Validate-only
+### 4. Dry-run
 
-Validates syntax and structure using `netplan generate`, without applying the configuration:
+```bash
+sudo ./netplan.sh --iface ens3 --dhcp4 --dry-run
+```
+
+---
+
+### 5. Validate-only
 
 ```bash
 sudo ./netplan.sh \
@@ -125,9 +130,7 @@ sudo ./netplan.sh \
 
 ---
 
-### 5. Show all interfaces
-
-Displays all detected network interfaces, including virtual and tunnel types:
+### 6. Show all interfaces
 
 ```bash
 sudo ./netplan.sh --show-all-ifaces
@@ -135,7 +138,7 @@ sudo ./netplan.sh --show-all-ifaces
 
 ---
 
-## Example Output
+## Example Output (static)
 
 ```
 ============= CONFIGURATION PREVIEW =============
@@ -145,16 +148,19 @@ IPv4        : 192.168.100.10/24
 Gateway     : 192.168.100.1
 DNS         : 1.1.1.1, 8.8.8.8
 =================================================
+...
+```
 
-Apply these settings? [y/N]: y
+## Example Output (DHCP)
 
-Interface status for ens3:
-inet 192.168.100.10/24 brd 192.168.100.255 scope global ens3
-Route to 1.1.1.1:
-1.1.1.1 via 192.168.100.1 dev ens3 src 192.168.100.10
-
-Done: interface ens3 configured with IP 192.168.100.10/24 and gateway 192.168.100.1.
-YAML saved at: /etc/netplan/50-cloud-init.yaml (backup created if file existed).
+```
+============= CONFIGURATION PREVIEW =============
+Netplan file: /etc/netplan/01-netcfg.yaml
+Interface   : ens3
+Mode        : DHCPv4
+DNS         : from DHCP lease
+=================================================
+...
 ```
 
 ---
