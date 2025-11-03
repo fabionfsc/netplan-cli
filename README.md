@@ -4,13 +4,13 @@ A minimal, IPv4-only CLI utility for configuring network interfaces on **Ubuntu 
 
 This repository contains a single Bash script:
 
-- **netplan.sh** – Generates and applies Netplan YAML configurations with input validation and automatic backups.
+- **netplan-cli.sh** – Generates and applies Netplan YAML configurations with input validation and automatic backups.
 
 ---
 
 ## Description
 
-- **netplan.sh**:
+- **netplan-cli.sh**:
   - Configures static IPv4 addresses using CIDR notation (e.g. `192.168.100.10/24`)
   - **Supports DHCPv4 mode (`--dhcp4`) with optional DNS override**
   - **Supports static mode via `--static4`**
@@ -57,7 +57,7 @@ This repository contains a single Bash script:
 2. Make the script executable:
 
    ```bash
-   chmod +x netplan.sh
+   chmod +x netplan-cli.sh
    ```
 
 ---
@@ -67,7 +67,7 @@ This repository contains a single Bash script:
 ### 1. List interfaces
 
 ```bash
-./netplan.sh --list-ifaces
+./netplan-cli.sh --list-ifaces
 ```
 
 ---
@@ -75,7 +75,7 @@ This repository contains a single Bash script:
 ### 2. Static IPv4 (non-interactive)
 
 ```bash
-sudo ./netplan.sh \
+sudo ./netplan-cli.sh \
   --static4 \
   --iface ens3 \
   --ip 192.168.100.10/24 \
@@ -88,7 +88,7 @@ sudo ./netplan.sh \
 ### 3. Static IPv4 on VLAN
 
 ```bash
-sudo ./netplan.sh \
+sudo ./netplan-cli.sh \
   --static4 \
   --iface ens3.120 \
   --ip 10.120.80.10/27 \
@@ -103,13 +103,13 @@ sudo ./netplan.sh \
 Enable DHCP:
 
 ```bash
-sudo ./netplan.sh --dhcp4 --iface ens3
+sudo ./netplan-cli.sh --dhcp4 --iface ens3
 ```
 
 DHCP with DNS override:
 
 ```bash
-sudo ./netplan.sh --dhcp4 --iface ens3 --dns 1.1.1.1,8.8.8.8
+sudo ./netplan-cli.sh --dhcp4 --iface ens3 --dns 1.1.1.1,8.8.8.8
 ```
 
 ---
@@ -117,7 +117,7 @@ sudo ./netplan.sh --dhcp4 --iface ens3 --dns 1.1.1.1,8.8.8.8
 ### 5. Dry-run
 
 ```bash
-sudo ./netplan.sh --dhcp4 --iface ens3 --dry-run
+sudo ./netplan-cli.sh --dhcp4 --iface ens3 --dry-run
 ```
 
 ---
@@ -125,7 +125,7 @@ sudo ./netplan.sh --dhcp4 --iface ens3 --dry-run
 ### 6. Validate-only
 
 ```bash
-sudo ./netplan.sh \
+sudo ./netplan-cli.sh \
   --static4 \
   --iface ens3 \
   --ip 192.168.100.10/24 \
