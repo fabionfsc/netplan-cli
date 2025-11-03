@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ------------- CLI PARSER (IPv4-only) -------------
+# ------------- CLI PARSER (IPv4 + DHCPv4) -------------
 IFACE=""
 IPV4_CIDR=""
 GW4=""
@@ -10,18 +10,20 @@ NETPLAN_FILE_ARG=""
 DRY_RUN=0
 VALIDATE_ONLY=0
 SHOW_ALL_IFACES=0
+DHCP4=0
 
 usage() {
   cat <<EOF
 Usage: sudo $0 [options]
 
-Interactive mode: run with no options.
+Interactive mode: run with no options (static IPv4 only).
 
 Non-interactive options:
   --iface IFACE           Interface name (e.g. ens3, enp0s3, bond0, ens3.120)
   --ip CIDR               IPv4 CIDR (e.g. 192.168.10.5/24)
   --gw IPV4               Default IPv4 gateway
   --dns LIST              DNS IPv4 comma-separated (e.g. 1.1.1.1,8.8.8.8)
+  --dhcp4                 Enable DHCPv4 on the interface (mutually exclusive with --ip/--gw)
 
 General:
   --file PATH             Netplan YAML to write (default: auto-detect or /etc/netplan/01-netcfg.yaml)
@@ -38,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --ip) IPV4_CIDR="$2"; shift 2;;
     --gw) GW4="$2"; shift 2;;
     --dns) DNS4="$2"; shift 2;;
+    --dhcp4) DHCP4=1; shift;;
     --file) NETPLAN_FILE_ARG="$2"; shift 2;;
     --dry-run) DRY_RUN=1; shift;;
     --validate-only) VALIDATE_ONLY=1; shift;;
@@ -97,7 +100,7 @@ pick_netplan_file() {
 list_ifaces() {
   local cmd="ip -o link show | awk -F': ' '{print \$2}'"
   if (( SHOW_ALL_IFACES==0 )); then
-    # filtra lo, docker, veth, cni, flannel, wg, tailscale, vm/virt bridges, tun/tap, zerotier
+    # filter loopback, container/tunnel, and common virtual interfaces
     bash -c "$cmd" | grep -Ev '^(lo|docker|veth|cni|flannel|wg|tailscale|vmnet|vnet|virbr|br-[0-9a-f]{12}|tun|tap|zt[a-z0-9]+)$' || true
   else
     bash -c "$cmd" || true
@@ -209,10 +212,25 @@ main() {
   # Resolve iface
   IFACE="$(pick_iface)"
 
-  # Interactive or args-fed values
+  # Values from interactive or args
   local ip4 ip4p gw4 dns_ary
-  if [[ -z "$IPV4_CIDR" ]]; then
-    # Interactive IPv4
+
+  # Mutually exclusive sanity check
+  if (( DHCP4==1 )) && { [[ -n "$IPV4_CIDR" ]] || [[ -n "$GW4" ]]; }; then
+    echo "Options conflict: --dhcp4 is mutually exclusive with --ip/--gw." >&2
+    exit 1
+  fi
+
+  if (( DHCP4==1 )); then
+    # DHCP path with optional DNS override
+    if [[ -n "$DNS4" ]]; then
+      IFS=',' read -r -a dns_ary <<<"$DNS4"
+      for d in "${dns_ary[@]}"; do
+        is_ipv4 "$d" || { echo "Invalid DNS entry: $d" >&2; exit 1; }
+      done
+    fi
+  elif [[ -z "$IPV4_CIDR" ]]; then
+    # Interactive static IPv4
     while true; do
       read -r -p "Define IPv4/prefix (e.g. 192.168.100.10/24): " in
       if read -r ip4 ip4p < <(parse_ipv4_cidr "$in" 2>/dev/null); then
@@ -235,13 +253,12 @@ main() {
       fi
     done
   else
-    # Non-interactive
+    # Non-interactive static IPv4
     read -r ip4 ip4p < <(parse_ipv4_cidr "$IPV4_CIDR")
     [[ -n "$GW4" ]] && validate_gw4_in_subnet "$ip4" "$ip4p" "$GW4"
     gw4="$GW4"
     if [[ -n "$DNS4" ]]; then
       IFS=',' read -r -a dns_ary <<<"$DNS4"
-      # validate DNS entries
       for d in "${dns_ary[@]}"; do
         is_ipv4 "$d" || { echo "Invalid DNS entry: $d" >&2; exit 1; }
       done
@@ -252,13 +269,28 @@ main() {
   fi
 
   # Build YAML
-  local DNS_BLOCK="      nameservers:
+  if (( DHCP4==1 )); then
+    local DNS_BLOCK_DHCP=""
+    if [[ ${#dns_ary[@]:-0} -gt 0 ]]; then
+      DNS_BLOCK_DHCP="      nameservers:
         addresses: [$(printf "%s," "${dns_ary[@]}" | sed 's/,$//')]"
-  local ADDR_BLOCK="      addresses:
+    fi
+    YAML_CONTENT=$(cat <<EOF
+network:
+  version: 2
+  ethernets:
+    $IFACE:
+      dhcp4: yes
+$( [[ -n "$DNS_BLOCK_DHCP" ]] && echo "$DNS_BLOCK_DHCP" )
+EOF
+)
+  else
+    local DNS_BLOCK="      nameservers:
+        addresses: [$(printf "%s," "${dns_ary[@]}" | sed 's/,$//')]"
+    local ADDR_BLOCK="      addresses:
         - $ip4/$ip4p"
-  local GW4_LINE="      gateway4: $gw4"
-
-  YAML_CONTENT=$(cat <<EOF
+    local GW4_LINE="      gateway4: $gw4"
+    YAML_CONTENT=$(cat <<EOF
 network:
   version: 2
   ethernets:
@@ -269,15 +301,25 @@ $GW4_LINE
 $DNS_BLOCK
 EOF
 )
+  fi
 
   # Preview
   echo
   echo "============= CONFIGURATION PREVIEW ============="
   echo "Netplan file: ${NETPLAN_FILE}"
   echo "Interface   : ${IFACE}"
-  echo "IPv4        : ${ip4}/${ip4p}"
-  echo "GW IPv4     : ${gw4}"
-  echo "DNS         : $(printf "%s " "${dns_ary[@]}")"
+  if (( DHCP4==1 )); then
+    echo "Mode        : DHCPv4"
+    if [[ ${#dns_ary[@]:-0} -gt 0 ]]; then
+      echo "DNS (override): $(printf "%s " "${dns_ary[@]}")"
+    else
+      echo "DNS         : from DHCP lease"
+    fi
+  else
+    echo "IPv4        : ${ip4}/${ip4p}"
+    echo "GW IPv4     : ${gw4}"
+    echo "DNS         : $(printf "%s " "${dns_ary[@]}")"
+  fi
   echo "================================================="
   echo
 
@@ -288,8 +330,8 @@ EOF
     exit 0
   fi
 
-  # Confirm only if interactive (no args used)
-  if [[ -z "$IPV4_CIDR$GW4$DNS4$IFACE$NETPLAN_FILE_ARG" ]]; then
+  # Confirmation only in interactive static mode
+  if [[ -z "$IPV4_CIDR$GW4$DNS4$IFACE$NETPLAN_FILE_ARG" ]] && (( DHCP4==0 )); then
     confirm "Apply these settings?" || { echo "Aborted."; exit 1; }
   fi
 
